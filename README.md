@@ -54,44 +54,49 @@ Follow these steps to set up and run your Discord bot.
 
 ### **Project Setup** :computer:
 
-1. **Clone this project** 
+1. **Clone this project**
 
-2. **Install Dependencies:**  
-   `$ npm install discord.js rss-parser dotenv`
+2. **Install Dependencies:**
+   `$ npm install`
 
-3. **Create .env File froom .env.example :**  
-   * clone .env.example to .env, then add this variable
+3. **Create .env File:**
+   - Create a `.env` file in the root of the project. You can copy `.env.example` if it exists.
+   - Add the following environment variables to your `.env` file:
     ```
-     DISCORD_BOT_TOKEN="YOUR_BOT_TOKEN_HERE"  
-     DISCORD_CHANNEL_ID="YOUR_CHANNEL_ID_HERE"  
+     DISCORD_BOT_TOKEN="YOUR_BOT_TOKEN_HERE"
+     DISCORD_CHANNEL_ID="YOUR_CHANNEL_ID_HERE"
      RSS_FEED_URL="https://rss.app/feeds/COiTZRnT26oDqrJf.xml"
     ```
 
-    * **Replace YOUR\_BOT\_TOKEN\_HERE** with the token you copied from Discord Developer Portal.  
-    * **Replace YOUR\_CHANNEL\_ID\_HERE** with the channel ID you copied from your Discord server.  
-    * You can optionally change RSS\_FEED\_URL here if you want to use a different feed.
+    - **Replace `YOUR_BOT_TOKEN_HERE`** with the token you copied from the Discord Developer Portal.
+    - **Replace `YOUR_CHANNEL_ID_HERE`** with the channel ID you copied from your Discord server.
+    - You can optionally change `RSS_FEED_URL` to use a different feed.
 
 ### **Running the Bot** :robot:
 
-Simply run to start bot
+You can run the bot in either development or production mode.
 
-`$ node index.js`
+**Development Mode**
+
+For development, the bot will automatically restart when you make changes to the code.
+
+`$ npm run dev`
+
+**Production Mode**
+
+For production, you'll first need to build the TypeScript source code into JavaScript.
+
+1.  **Build the project:**
+    `$ npm run build`
+
+2.  **Start the bot:**
+    `$ npm start`
 
 The bot should now log in to Discord. You will see console messages indicating that it's checking the RSS feed and either posting new items or reporting that no new eligible items were found.
 
 ### **License**
 
-This project is licensed under the MIT License \- see the LICENSE file (if you choose to create one) for details. (Typically, for small open-source projects, a LICENSE file is included in the root directory, containing the full text of the chosen license).
-
-## TypeScript Migration
-
-This project has been migrated to TypeScript and now uses a modern project structure:
-
-- Source code is in `src/`
-- Build output is in `dist/`
-- To build: `npm run build`
-- To run: `npm start`
-- For development: `npm run dev`
+This project is licensed under the MIT License - see the LICENSE file (if you choose to create one) for details. (Typically, for small open-source projects, a LICENSE file is included in the root directory, containing the full text of the chosen license).
 
 ## Project Structure
 
@@ -100,7 +105,3 @@ This project has been migrated to TypeScript and now uses a modern project struc
 - `src/events/` - Discord event handlers
 - `src/services/` - Reusable services (e.g., RSS, database)
 - `src/utils/` - Utility functions
-
-## Environment Variables
-
-Copy `.env-example` to `.env` and fill in your Discord bot token, channel ID, and RSS feed URL.
