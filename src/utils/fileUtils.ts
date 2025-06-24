@@ -9,8 +9,8 @@ export async function loadLastProcessedGuid(): Promise<string | null> {
       "utf8"
     );
     return JSON.parse(data).lastGuid;
-  } catch (error: any) {
-    if (error.code === "ENOENT") {
+  } catch (error: unknown) {
+    if (typeof error === "object" && error && "code" in error && (error as { code?: string }).code === "ENOENT") {
       return null;
     } else {
       throw error;

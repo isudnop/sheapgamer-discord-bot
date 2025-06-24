@@ -42,8 +42,9 @@ export async function checkRssFeed(client: Client) {
       return;
     }
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const newItemsSinceLastCheck: any[] = [];
-    for (const entry of feed.items) {
+    type FeedEntry = { [key: string]: unknown; isoDate?: string; title?: string; link?: string; guid?: string; id?: string };
+    const newItemsSinceLastCheck: FeedEntry[] = [];
+    for (const entry of feed.items as FeedEntry[]) {
       const itemGuid =
         entry.guid ||
         entry.id ||
@@ -59,7 +60,9 @@ export async function checkRssFeed(client: Client) {
       newItemsSinceLastCheck.push(entry);
     }
     newItemsSinceLastCheck.sort(
-      (a, b) => new Date(a.isoDate).getTime() - new Date(b.isoDate).getTime()
+      (a, b) =>
+        new Date(a.isoDate ?? 0).getTime() -
+        new Date(b.isoDate ?? 0).getTime()
     );
     if (newItemsSinceLastCheck.length > 0) {
       for (const entry of newItemsSinceLastCheck) {
@@ -69,7 +72,7 @@ export async function checkRssFeed(client: Client) {
         const embedDiscord = new EmbedBuilder()
           .setTitle(title)
           .setURL(link)
-          .setColor(0x0099ff);
+          .setColor(0x0099FF);
         if (imageUrl) {
           embedDiscord.setImage(imageUrl);
         }
@@ -93,15 +96,18 @@ export async function checkRssFeed(client: Client) {
     } else {
       console.log("No new RSS items found.");
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("An unexpected error occurred during RSS check:", error);
-    if (error.response) {
-      console.error(
-        "RSS Parser Response Error:",
-        error.response.status,
-        error.response.headers,
-        error.response.data
-      );
+    if (typeof error === "object" && error && "response" in error) {
+      const err = error as { response?: { status?: unknown; headers?: unknown; data?: unknown } };
+      if (err.response) {
+        console.error(
+          "RSS Parser Response Error:",
+          err.response.status,
+          err.response.headers,
+          err.response.data
+        );
+      }
     }
   }
 }

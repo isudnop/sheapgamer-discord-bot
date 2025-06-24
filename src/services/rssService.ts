@@ -1,8 +1,16 @@
 import Parser from "rss-parser";
 
+type FeedEntry = {
+  [key: string]: unknown;
+  media?: { content?: { url?: string; type?: string }[] };
+  enclosure?: { url?: string; type?: string };
+  summary?: string;
+  content?: string;
+};
+
 const parser = new Parser();
 
-export function getImageFromEntry(entry: any): string | null {
+export function getImageFromEntry(entry: FeedEntry): string | null {
   let imageUrl: string | null = null;
   if (
     entry.media &&
@@ -26,7 +34,7 @@ export function getImageFromEntry(entry: any): string | null {
     imageUrl = entry.enclosure.url;
   }
   if (!imageUrl && (entry.summary || entry.content)) {
-    const htmlContent = entry.content || entry.summary;
+    const htmlContent = (entry.content || entry.summary) as string;
     const imgMatch = htmlContent.match(/<img[^>]+src="([^"]+)"/i);
     if (imgMatch && imgMatch[1]) {
       imageUrl = imgMatch[1];

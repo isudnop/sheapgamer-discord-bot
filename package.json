@@ -4,7 +4,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "lint": "eslint 'src/**/*.{ts,tsx}'"
+    "lint": "eslint"
   },
   "dependencies": {
     "discord.js": "^14.0.0",
