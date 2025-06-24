@@ -10,9 +10,15 @@ export default async function onReady(client: Client) {
   console.log(`Logged in as ${client.user?.tag}!`);
   const lastGuid = await loadLastProcessedGuid();
   setLastProcessedGuid(lastGuid);
-  setInterval(() => checkRssFeed(client), RSS_CHECK_INTERVAL_MS);
+
+  const checkFeed = async () => {
+    await checkRssFeed(client);
+    setTimeout(checkFeed, RSS_CHECK_INTERVAL_MS);
+  };
+
+  checkFeed();
+
   console.log(
     `Started RSS feed check loop every ${RSS_CHECK_INTERVAL_MS / 1000} seconds.`
   );
-  checkRssFeed(client);
 }
