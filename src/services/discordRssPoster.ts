@@ -1,7 +1,7 @@
 import { Client, EmbedBuilder, TextChannel } from "discord.js";
-import { parseFeed, getImageFromEntry } from "./rssService";
-import { saveLastProcessedGuid } from "../utils/fileUtils";
-import { TARGET_CHANNEL_ID, RSS_FEED_URL } from "../config";
+import { parseFeed, getImageFromEntry } from "@/services/rssService";
+import { saveLastProcessedGuid } from "@/utils/fileUtils";
+import { TARGET_CHANNEL_ID, RSS_FEED_URL } from "@/config";
 
 let lastProcessedGuid: string | null = null;
 
@@ -22,7 +22,7 @@ export async function checkRssFeed(client: Client) {
       );
       return;
     }
-    if (!feed || !feed.items || !Array.isArray(feed.items)) {
+    if (!feed?.items || !Array.isArray(feed.items)) {
       console.log("RSS feed items are empty or malformed. Skipping post.");
       return;
     }
@@ -42,7 +42,14 @@ export async function checkRssFeed(client: Client) {
       return;
     }
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    type FeedEntry = { [key: string]: unknown; isoDate?: string; title?: string; link?: string; guid?: string; id?: string };
+    type FeedEntry = {
+      [key: string]: unknown;
+      isoDate?: string;
+      title?: string;
+      link?: string;
+      guid?: string;
+      id?: string;
+    };
     const newItemsSinceLastCheck: FeedEntry[] = [];
     for (const entry of feed.items as FeedEntry[]) {
       const itemGuid =
@@ -61,8 +68,7 @@ export async function checkRssFeed(client: Client) {
     }
     newItemsSinceLastCheck.sort(
       (a, b) =>
-        new Date(a.isoDate ?? 0).getTime() -
-        new Date(b.isoDate ?? 0).getTime()
+        new Date(a.isoDate ?? 0).getTime() - new Date(b.isoDate ?? 0).getTime()
     );
     if (newItemsSinceLastCheck.length > 0) {
       for (const entry of newItemsSinceLastCheck) {
@@ -72,7 +78,7 @@ export async function checkRssFeed(client: Client) {
         const embedDiscord = new EmbedBuilder()
           .setTitle(title)
           .setURL(link)
-          .setColor(0x0099FF);
+          .setColor(0x0099ff);
         if (imageUrl) {
           embedDiscord.setImage(imageUrl);
         }
@@ -99,7 +105,9 @@ export async function checkRssFeed(client: Client) {
   } catch (error: unknown) {
     console.error("An unexpected error occurred during RSS check:", error);
     if (typeof error === "object" && error && "response" in error) {
-      const err = error as { response?: { status?: unknown; headers?: unknown; data?: unknown } };
+      const err = error as {
+        response?: { status?: unknown; headers?: unknown; data?: unknown };
+      };
       if (err.response) {
         console.error(
           "RSS Parser Response Error:",

@@ -1,6 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
-import { GUID_FILE } from "../config";
+import { GUID_FILE } from "@/config/index.js";
 
 export async function loadLastProcessedGuid(): Promise<string | null> {
   try {

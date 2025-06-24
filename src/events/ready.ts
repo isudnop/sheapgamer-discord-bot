@@ -1,10 +1,10 @@
 import { Client } from "discord.js";
-import { loadLastProcessedGuid } from "../utils/fileUtils";
+import { loadLastProcessedGuid } from "@/utils/fileUtils";
 import {
   checkRssFeed,
   setLastProcessedGuid,
-} from "../services/discordRssPoster";
-import { RSS_CHECK_INTERVAL_MS } from "../config";
+} from "@/services/discordRssPoster";
+import { RSS_CHECK_INTERVAL_MS } from "@/config";
 
 export default async function onReady(client: Client) {
   console.log(`Logged in as ${client.user?.tag}!`);

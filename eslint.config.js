@@ -1,5 +1,9 @@
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default [
   js.configs.recommended,
@@ -10,6 +14,14 @@ export default [
       parserOptions: {
         project: './tsconfig.json',
         sourceType: 'module',
+      },
+    },
+    settings: {
+      'import/resolver': {
+        alias: {
+          map: [['@', path.resolve(__dirname, 'src')]],
+          extensions: ['.ts', '.js', '.tsx', '.jsx'],
+        },
       },
     },
     rules: {

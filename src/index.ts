@@ -1,6 +1,6 @@
 import { Client, GatewayIntentBits } from "discord.js";
-import { DISCORD_BOT_TOKEN } from "./config";
-import onReady from "./events/ready";
+import { DISCORD_BOT_TOKEN } from "@/config";
+import onReady from "@/events/ready";
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds],
