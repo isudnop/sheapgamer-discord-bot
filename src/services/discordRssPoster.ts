@@ -1,14 +1,70 @@
 import { Client, EmbedBuilder, TextChannel } from "discord.js";
-import { parseFeed, getImageFromEntry } from "@/services/rssService";
+import { parseFeed, getImageFromEntry, FeedEntry } from "@/services/rssService";
 import { saveLastProcessedGuid } from "@/utils/fileUtils";
+import { delay } from "@/utils/delay";
 import { TARGET_CHANNEL_ID, RSS_FEED_URL } from "@/config";
 
 let lastProcessedGuid: string | null = null;
 
+/**
+ * Sets the last processed GUID for RSS tracking.
+ * @param guid The GUID to set as last processed.
+ */
 export function setLastProcessedGuid(guid: string | null) {
   lastProcessedGuid = guid;
 }
 
+/**
+ * Extracts a unique identifier (GUID) from a feed entry.
+ * Falls back to a synthetic GUID if none is present.
+ * @param entry The feed entry.
+ * @returns The extracted or generated GUID.
+ */
+function extractGuid(entry: FeedEntry): string {
+  return (
+    (entry.guid as string) ||
+    (entry.id as string) ||
+    (entry.link as string) ||
+    `NO_GUID_${entry.title ?? "unknown"}_${Date.now()}`
+  );
+}
+
+/**
+ * Posts new RSS feed items to the specified Discord channel.
+ * @param channel The Discord text channel.
+ * @param items The new feed entries to post.
+ */
+async function postNewItemsToChannel(channel: TextChannel, items: FeedEntry[]) {
+  for (const entry of items) {
+    const title = (entry.title as string) || "No Title";
+    const link = (entry.link as string) || "";
+    const imageUrl = getImageFromEntry(entry);
+    const embedDiscord = new EmbedBuilder()
+      .setTitle(title)
+      .setURL(link)
+      .setColor(0x0099ff);
+    if (imageUrl) {
+      embedDiscord.setImage(imageUrl);
+    }
+    if (entry.isoDate) {
+      embedDiscord.setTimestamp(new Date(entry.isoDate as string));
+    }
+    try {
+      await channel.send({ embeds: [embedDiscord] });
+    } catch (discordError) {
+      console.error(
+        `Failed to send message to Discord for '${title}':`,
+        discordError
+      );
+    }
+    await delay(3000);
+  }
+}
+
+/**
+ * Checks the RSS feed for new items and posts them to Discord if found.
+ * @param client The Discord client instance.
+ */
 export async function checkRssFeed(client: Client) {
   console.log(`Checking RSS feed: ${RSS_FEED_URL}`);
   try {
@@ -27,12 +83,7 @@ export async function checkRssFeed(client: Client) {
       return;
     }
     const latestGuidInCurrentFeed =
-      feed.items.length > 0
-        ? feed.items[0].guid ||
-          feed.items[0].id ||
-          feed.items[0].link ||
-          `NO_GUID_${feed.items[0].title}_${Date.now()}`
-        : null;
+      feed.items.length > 0 ? extractGuid(feed.items[0] as FeedEntry) : null;
     if (lastProcessedGuid === null && latestGuidInCurrentFeed) {
       await saveLastProcessedGuid(latestGuidInCurrentFeed);
       lastProcessedGuid = latestGuidInCurrentFeed;
@@ -42,22 +93,10 @@ export async function checkRssFeed(client: Client) {
       return;
     }
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    type FeedEntry = {
-      [key: string]: unknown;
-      isoDate?: string;
-      title?: string;
-      link?: string;
-      guid?: string;
-      id?: string;
-    };
     const newItemsSinceLastCheck: FeedEntry[] = [];
     for (const entry of feed.items as FeedEntry[]) {
-      const itemGuid =
-        entry.guid ||
-        entry.id ||
-        entry.link ||
-        `NO_GUID_${entry.title}_${Date.now()}`;
-      const itemDate = entry.isoDate ? new Date(entry.isoDate) : null;
+      const itemGuid = extractGuid(entry);
+      const itemDate = entry.isoDate ? new Date(entry.isoDate as string) : null;
       if (itemGuid === lastProcessedGuid) {
         break;
       }
@@ -66,35 +105,15 @@ export async function checkRssFeed(client: Client) {
       }
       newItemsSinceLastCheck.push(entry);
     }
-    newItemsSinceLastCheck.sort(
-      (a, b) =>
-        new Date(a.isoDate ?? 0).getTime() - new Date(b.isoDate ?? 0).getTime()
-    );
+    newItemsSinceLastCheck.sort((a, b) => {
+      const aDate =
+        typeof a.isoDate === "string" ? new Date(a.isoDate).getTime() : 0;
+      const bDate =
+        typeof b.isoDate === "string" ? new Date(b.isoDate).getTime() : 0;
+      return aDate - bDate;
+    });
     if (newItemsSinceLastCheck.length > 0) {
-      for (const entry of newItemsSinceLastCheck) {
-        const title = entry.title || "No Title";
-        const link = entry.link || "";
-        const imageUrl = getImageFromEntry(entry);
-        const embedDiscord = new EmbedBuilder()
-          .setTitle(title)
-          .setURL(link)
-          .setColor(0x0099ff);
-        if (imageUrl) {
-          embedDiscord.setImage(imageUrl);
-        }
-        if (entry.isoDate) {
-          embedDiscord.setTimestamp(new Date(entry.isoDate));
-        }
-        try {
-          await channel.send({ embeds: [embedDiscord] });
-        } catch (discordError) {
-          console.error(
-            `Failed to send message to Discord for '${title}':`,
-            discordError
-          );
-        }
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-      }
+      await postNewItemsToChannel(channel, newItemsSinceLastCheck);
       if (latestGuidInCurrentFeed) {
         await saveLastProcessedGuid(latestGuidInCurrentFeed);
         lastProcessedGuid = latestGuidInCurrentFeed;

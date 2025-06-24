@@ -1,5 +1,8 @@
 import Parser from "rss-parser";
 
+/**
+ * Represents a generic RSS feed entry, supporting common media and enclosure fields.
+ */
 export type FeedEntry = {
   [key: string]: unknown;
   media?: { content?: { url?: string; type?: string }[] };
@@ -10,8 +13,14 @@ export type FeedEntry = {
 
 const parser = new Parser();
 
+/**
+ * Attempts to extract an image URL from a feed entry.
+ * Checks media content, enclosure, and HTML content fields.
+ * @param entry The feed entry to extract the image from.
+ * @returns The image URL if found, otherwise null.
+ */
 export function getImageFromEntry(entry: FeedEntry): string | null {
-  // Try to get image from media.content
+  // Check media:content for image
   const mediaImage = entry.media?.content?.find(
     (media) =>
       media.url &&
@@ -20,7 +29,7 @@ export function getImageFromEntry(entry: FeedEntry): string | null {
   )?.url;
   if (mediaImage) return mediaImage;
 
-  // Try to get image from enclosure
+  // Check enclosure for image
   if (
     entry.enclosure?.url &&
     entry.enclosure?.type?.startsWith("image/") &&
@@ -29,18 +38,25 @@ export function getImageFromEntry(entry: FeedEntry): string | null {
     return entry.enclosure.url;
   }
 
-  // Try to get image from HTML content
-  if (entry.summary || entry.content) {
-    const htmlContent = (entry.content || entry.summary) as string;
-    const imgMatch = htmlContent.match(/<img[^>]+src="([^"]+)"/i);
+  // Check HTML content for <img src="...">
+  const htmlContent = (entry.content || entry.summary) as string | undefined;
+  if (htmlContent) {
+    // More robust regex for src attribute
+    const imgMatch = htmlContent.match(/<img[^>]+src=["']([^"'>]+)["']/i);
     if (imgMatch && imgMatch[1] && imgMatch[1].startsWith("http")) {
       return imgMatch[1];
     }
   }
 
+  // No image found
   return null;
 }
 
+/**
+ * Parses an RSS feed from the given URL.
+ * @param url The RSS feed URL.
+ * @returns The parsed feed object.
+ */
 export async function parseFeed(url: string) {
   return parser.parseURL(url);
 }
