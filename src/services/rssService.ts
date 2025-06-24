@@ -1,6 +1,6 @@
 import Parser from "rss-parser";
 
-type FeedEntry = {
+export type FeedEntry = {
   [key: string]: unknown;
   media?: { content?: { url?: string; type?: string }[] };
   enclosure?: { url?: string; type?: string };
@@ -11,41 +11,37 @@ type FeedEntry = {
 const parser = new Parser();
 
 export function getImageFromEntry(entry: FeedEntry): string | null {
-  let imageUrl: string | null = null;
+  // Try to get image from media.content
+  const mediaImage = entry.media?.content?.find(
+    (media) =>
+      media.url &&
+      media.type?.startsWith("image/") &&
+      media.url.startsWith("http")
+  )?.url;
+  if (mediaImage) return mediaImage;
+
+  // Try to get image from enclosure
   if (
-    entry.media &&
-    entry.media.content &&
-    Array.isArray(entry.media.content)
+    entry.enclosure?.url &&
+    entry.enclosure?.type?.startsWith("image/") &&
+    entry.enclosure.url.startsWith("http")
   ) {
-    for (const media of entry.media.content) {
-      if (media.url && media.type && media.type.startsWith("image/")) {
-        imageUrl = media.url;
-        break;
-      }
-    }
+    return entry.enclosure.url;
   }
-  if (
-    !imageUrl &&
-    entry.enclosure &&
-    entry.enclosure.url &&
-    entry.enclosure.type &&
-    entry.enclosure.type.startsWith("image/")
-  ) {
-    imageUrl = entry.enclosure.url;
-  }
-  if (!imageUrl && (entry.summary || entry.content)) {
+
+  // Try to get image from HTML content
+  if (entry.summary || entry.content) {
     const htmlContent = (entry.content || entry.summary) as string;
     const imgMatch = htmlContent.match(/<img[^>]+src="([^"]+)"/i);
-    if (imgMatch && imgMatch[1]) {
-      imageUrl = imgMatch[1];
+    if (imgMatch && imgMatch[1] && imgMatch[1].startsWith("http")) {
+      return imgMatch[1];
     }
   }
-  if (imageUrl && !imageUrl.startsWith("http")) {
-    imageUrl = null;
-  }
-  return imageUrl;
+
+  return null;
 }
 
 export async function parseFeed(url: string) {
   return parser.parseURL(url);
 }
+

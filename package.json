@@ -4,7 +4,8 @@
     "build": "tsup src/index.ts --format esm --dts --outDir dist --clean",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "lint": "eslint src/**/*.ts"
+    "lint": "eslint src/**/*.ts",
+    "test": "jest"
   },
   "dependencies": {
     "discord.js": "^14.0.0",
