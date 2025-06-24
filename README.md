@@ -82,3 +82,25 @@ The bot should now log in to Discord. You will see console messages indicating t
 ### **License**
 
 This project is licensed under the MIT License \- see the LICENSE file (if you choose to create one) for details. (Typically, for small open-source projects, a LICENSE file is included in the root directory, containing the full text of the chosen license).
+
+## TypeScript Migration
+
+This project has been migrated to TypeScript and now uses a modern project structure:
+
+- Source code is in `src/`
+- Build output is in `dist/`
+- To build: `npm run build`
+- To run: `npm start`
+- For development: `npm run dev`
+
+## Project Structure
+
+- `src/config/` - Configuration files and environment management
+- `src/commands/` - Discord command modules
+- `src/events/` - Discord event handlers
+- `src/services/` - Reusable services (e.g., RSS, database)
+- `src/utils/` - Utility functions
+
+## Environment Variables
+
+Copy `.env-example` to `.env` and fill in your Discord bot token, channel ID, and RSS feed URL.
