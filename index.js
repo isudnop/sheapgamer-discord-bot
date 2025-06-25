@@ -1,8 +1,9 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Partials, EmbedBuilder, Events, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, EmbedBuilder, Events, ActionRowBuilder, StringSelectMenuBuilder, PermissionsBitField } = require('discord.js');
 const Parser = require('rss-parser');
 const path = require('path');
 const fs = require('fs/promises');
+const os = require('os');
 
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const RSS_FEED_URL = process.env.RSS_FEED_URL || 'https://rss.app/feeds/COiTZRnT26oDqrJf.xml';
@@ -196,6 +197,157 @@ client.on(Events.InteractionCreate, async interaction => {
   await interaction.reply({ content: `✅ จะโพสต์ RSS ไปที่ <#${selectedChannelId}>`, ephemeral: true });
 
   await checkRssFeed();
+});
+
+client.on(Events.MessageCreate, async message => {
+  if (message.author.bot) return;
+
+  if (message.content === '!ping') {
+    const sent = await message.reply('🏓 Pong!');
+    const latency = sent.createdTimestamp - message.createdTimestamp;
+    await sent.edit(`🏓 Pong! Latency: **${latency}ms** | API: **${Math.round(client.ws.ping)}ms**`);
+  }
+});
+
+client.on(Events.MessageCreate, async message => {
+  if (message.author.bot) return;
+
+  if (message.content === '!botinfo') {
+    const uptime = process.uptime(); // วินาที
+    const formatUptime = new Date(uptime * 1000).toISOString().substr(11, 8); // HH:mm:ss
+
+    const embed = new EmbedBuilder()
+      .setTitle('🤖 ข้อมูลระบบของบอท')
+      .setColor(0x00AE86)
+      .addFields(
+        { name: '🕒 Uptime', value: `${formatUptime}`, inline: true },
+        { name: '💾 Memory', value: `${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`, inline: true },
+        { name: '🧠 CPU', value: os.cpus()[0].model, inline: false },
+        { name: '💻 Platform', value: `${os.platform()} (${os.arch()})`, inline: true },
+        { name: '📡 Node.js', value: process.version, inline: true },
+      )
+      .setTimestamp();
+
+    await message.reply({ embeds: [embed] });
+  }
+});
+
+client.on(Events.MessageCreate, async message => {
+  if (message.author.bot) return;
+
+  if (message.content === '!help') {
+    const embed = new EmbedBuilder()
+      .setTitle('📖 คำสั่งทั้งหมดของบอท')
+      .setColor(0x5865F2)
+      .setDescription('รายการคำสั่งที่คุณสามารถใช้ได้:')
+      .addFields(
+        { name: '`!ping`', value: 'ทดสอบความเร็วระหว่างบอทกับ Discord (latency)', inline: false },
+        { name: '`!botinfo`', value: 'แสดงข้อมูลระบบที่รันบอท เช่น CPU, RAM, uptime', inline: false },
+        { name: '`!rss-setup`', value: 'ตั้งค่าห้องที่ใช้สำหรับโพสต์ RSS สำหรับเซิร์ฟเวอร์นี้', inline: false },
+        { name: '`!help`', value: 'แสดงคำสั่งทั้งหมดที่มีอยู่', inline: false }
+      )
+      .setFooter({ text: `โดย ${client.user.username}` })
+      .setTimestamp();
+
+    await message.reply({ embeds: [embed] });
+  }
+});
+
+client.on(Events.InteractionCreate, async interaction => {
+  if (!interaction.isChatInputCommand()) return;
+
+  const { commandName } = interaction;
+
+  if (commandName === 'ping') {
+    await interaction.reply(`🏓 Pong! API Latency: ${Math.round(client.ws.ping)}ms`);
+  }
+
+  else if (commandName === 'botinfo') {
+    const uptime = process.uptime();
+    const formatUptime = new Date(uptime * 1000).toISOString().substr(11, 8);
+
+    const embed = new EmbedBuilder()
+      .setTitle('🤖 ข้อมูลระบบของบอท')
+      .setColor(0x00AE86)
+      .addFields(
+        { name: '🕒 Uptime', value: `${formatUptime}`, inline: true },
+        { name: '💾 Memory', value: `${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`, inline: true },
+        { name: '🧠 CPU', value: os.cpus()[0].model, inline: false },
+        { name: '💻 Platform', value: `${os.platform()} (${os.arch()})`, inline: true },
+        { name: '📡 Node.js', value: process.version, inline: true },
+      )
+      .setTimestamp();
+
+    await interaction.reply({ embeds: [embed] });
+  }
+
+  else if (commandName === 'help') {
+    const embed = new EmbedBuilder()
+      .setTitle('📖 คำสั่งทั้งหมดของบอท')
+      .setColor(0x5865F2)
+      .setDescription('คำสั่งที่รองรับในเวอร์ชัน Slash Command:')
+      .addFields(
+        { name: '/ping', value: 'ทดสอบความเร็วระหว่างบอทกับ Discord' },
+        { name: '/botinfo', value: 'แสดงข้อมูลระบบที่รันบอท' },
+        { name: '/rss-setup', value: 'เลือกห้องโพสต์ RSS สำหรับเซิร์ฟเวอร์นี้' },
+        { name: '/help', value: 'ดูคำสั่งทั้งหมด' }
+      );
+
+    await interaction.reply({ embeds: [embed] });
+  }
+
+ else if (commandName === 'rss-setup') {
+  if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+    return interaction.reply({ content: "คุณต้องเป็นแอดมินเพื่อใช้คำสั่งนี้", ephemeral: true });
+  }
+
+  try {
+    await interaction.deferReply({ ephemeral: true }); // แจ้ง Discord ว่ากำลังโหลด
+
+    const allChannels = await interaction.guild.channels.fetch();
+    const textChannels = [...allChannels.values()].filter(c =>
+      c.isTextBased() && (c.type === 0 || c.type === 5)
+    );
+
+    if (textChannels.length === 0) {
+      return interaction.editReply({ content: "ไม่พบห้อง text ที่ใช้งานได้ในกิลด์นี้" });
+    }
+
+    const chunks = [];
+    for (let i = 0; i < textChannels.length; i += 25) {
+      chunks.push(textChannels.slice(i, i + 25));
+    }
+
+    const rows = chunks.map((chunk, idx) => {
+      const menu = new StringSelectMenuBuilder()
+        .setCustomId(`select_channel_${idx}`)
+        .setPlaceholder(`เลือกห้องสำหรับโพสต์ RSS (ชุด ${idx + 1})`)
+        .addOptions(chunk.map(c => ({
+          label: `#${c.name}`,
+          value: c.id,
+        })));
+      return new ActionRowBuilder().addComponents(menu);
+    });
+
+    // แทนที่จะใช้ interaction.reply() เพราะ deferReply() ไปแล้ว ต้องใช้ editReply()
+    await interaction.editReply({
+      content: 'เลือกห้องที่ต้องการให้โพสต์ RSS ด้านล่าง (หากห้องเยอะจะแบ่งเป็นหลายเมนู)',
+      components: rows,
+    });
+
+    // ถ้า handleRssSetup ต้องทำอะไรต่อหลังจากส่งเมนู ให้เรียกที่นี่
+    // แต่ถ้า handleRssSetup มี interaction.reply/editReply อีก อย่าซ้ำกันนะ
+    // await handleRssSetup(interaction);
+
+  } catch (err) {
+    console.error("เกิดข้อผิดพลาดในการโหลดห้อง:", err);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: "เกิดข้อผิดพลาดขณะโหลดห้อง ลองใหม่อีกครั้งนะ", components: [] });
+    } else {
+      await interaction.reply({ content: "เกิดข้อผิดพลาดขณะโหลดห้อง ลองใหม่อีกครั้งนะ", ephemeral: true });
+    }
+  }
+}
 });
 
 client.on('ready', async () => {
