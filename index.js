@@ -1,225 +1,211 @@
 require('dotenv').config();
-
-// Import necessary Discord.js classes and other modules
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, EmbedBuilder, Events, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
 const Parser = require('rss-parser');
 const path = require('path');
 const fs = require('fs/promises');
 
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
-const TARGET_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
-const RSS_FEED_URL = process.env.RSS_FEED_URL || 'https://rss.app/feeds/COiTZRnT26oDqrJf.xml'; // Using provided URL as default if not Sheapgamer RSS
-const RSS_CHECK_INTERVAL_MS = 900000; // 15 minutes (15 * 60 * 1000 ms)
+const RSS_FEED_URL = process.env.RSS_FEED_URL || 'https://rss.app/feeds/COiTZRnT26oDqrJf.xml';
+const RSS_CHECK_INTERVAL_MS = 900000; // 15 minutes
+
 const GUID_FILE = path.resolve(__dirname, 'last_processed_guid.json');
+const CONFIG_FILE = path.resolve(__dirname, 'config.json');
+const GUILD_SETUP_FILE = path.resolve(__dirname, 'guild_setup.json');
+
 const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-    ]
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
+    partials: [Partials.Channel],
 });
 
 const parser = new Parser();
 let lastProcessedGuid = null;
+let config = {};
+let guildSetup = {};
 
-/**
- * The function `loadLastProcessedGuid` asynchronously loads the last processed GUID from a file,
- * handling errors such as file not found.
- */
+async function loadJsonFile(filePath, fallback = {}) {
+    try {
+        const data = await fs.readFile(filePath, 'utf8');
+        return JSON.parse(data);
+    } catch {
+        return fallback;
+    }
+}
+
+async function saveJsonFile(filePath, data) {
+    await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf8');
+}
+
 async function loadLastProcessedGuid() {
-    try {
-        const data = await fs.readFile(GUID_FILE, 'utf8');
-        console.log(`Loading lastProcessedGuid from ${GUID_FILE}`);
-        lastProcessedGuid = JSON.parse(data).lastGuid;
-        console.log(`Loaded lastProcessedGuid: ${lastProcessedGuid}`);
-    } catch (error) {
-        if (error.code === 'ENOENT') {
-            console.log('last_processed_guid.json not found, starting fresh.');
-            lastProcessedGuid = null;
-        } else {
-            console.error('Error loading lastProcessedGuid:', error);
-        }
-    }
+    const data = await loadJsonFile(GUID_FILE, { lastGuid: null });
+    lastProcessedGuid = data.lastGuid;
 }
 
-/**
- * Saves the last processed GUID to a file.
- * @param {string} guid - The GUID to save as the last processed.
- */
 async function saveLastProcessedGuid(guid) {
-    try {
-        await fs.writeFile(GUID_FILE, JSON.stringify({ lastGuid: guid }), 'utf8');
-        console.log(`Saved lastProcessedGuid: ${guid}`);
-    } catch (error) {
-        console.error('Error saving lastProcessedGuid:', error);
-    }
+    await saveJsonFile(GUID_FILE, { lastGuid: guid });
 }
 
-/**
- * Extracts an image URL from an RSS entry.
- * It checks for media content, enclosure, and HTML content to find the first image.
- * @param {Object} entry - The RSS entry object.
- * @returns {string|null} - The image URL if found, otherwise null.
- */
+async function loadConfig() {
+    config = await loadJsonFile(CONFIG_FILE);
+}
+
+async function saveConfig() {
+    await saveJsonFile(CONFIG_FILE, config);
+}
+
+async function loadGuildSetup() {
+    guildSetup = await loadJsonFile(GUILD_SETUP_FILE);
+}
+
+async function saveGuildSetup() {
+    await saveJsonFile(GUILD_SETUP_FILE, guildSetup);
+}
+
 function getImageFromEntry(entry) {
     let imageUrl = null;
-    if (entry.media && entry.media.content && Array.isArray(entry.media.content)) {
+
+    if (entry.media?.content?.length) {
         for (const media of entry.media.content) {
-            if (media.url && media.type && media.type.startsWith('image/')) {
+            if (media.url && media.type?.startsWith('image/')) {
                 imageUrl = media.url;
                 break;
             }
         }
     }
 
-    if (!imageUrl && entry.enclosure && entry.enclosure.url && entry.enclosure.type && entry.enclosure.type.startsWith('image/')) {
+    if (!imageUrl && entry.enclosure?.url?.startsWith('http') && entry.enclosure.type?.startsWith('image/')) {
         imageUrl = entry.enclosure.url;
     }
 
     if (!imageUrl && (entry.summary || entry.content)) {
-        const htmlContent = entry.content || entry.summary;
-        const imgMatch = htmlContent.match(/<img[^>]+src="([^">]+)"/i);
-        if (imgMatch && imgMatch[1]) {
-            imageUrl = imgMatch[1];
-        }
+        const html = entry.content || entry.summary;
+        const match = html.match(/<img[^>]+src="([^">]+)"/i);
+        if (match) imageUrl = match[1];
     }
 
-    if (imageUrl && !imageUrl.startsWith('http')) {
-        imageUrl = null;
-    }
-
-    return imageUrl;
+    return imageUrl?.startsWith('http') ? imageUrl : null;
 }
 
-
-/**
- * Checks the RSS feed for new items and posts them to a Discord channel.
- * It fetches the feed, filters items based on the last processed GUID and date,
- * and sends new items as embeds to the specified Discord channel.
- * @returns {Promise<void>}
- * @throws {Error} If there is an issue with the RSS feed or Discord API.
- */
 async function checkRssFeed() {
-    console.log(`Checking RSS feed: ${RSS_FEED_URL}`);
+    await loadGuildSetup();
     try {
         const feed = await parser.parseURL(RSS_FEED_URL);
-        const channel = client.channels.cache.get(TARGET_CHANNEL_ID);
-        if (!channel) {
-            console.error(`Error: Could not find channel with ID ${TARGET_CHANNEL_ID}. Make sure the bot has access and developer mode is on to copy correct ID.`);
-            return;
+        if (!feed?.items?.length) return;
+
+        let newItems = [];
+
+        if (!lastProcessedGuid) {
+            newItems = feed.items;
+            console.log("🔰 First run, all items will be sent.");
+        } else {
+            for (const entry of feed.items) {
+                const guid = entry.guid || entry.id || entry.link || `NO_GUID_${entry.title}_${Date.now()}`;
+                if (guid === lastProcessedGuid) break;
+                newItems.push(entry);
+            }
         }
 
-        if (!feed || !feed.items || !Array.isArray(feed.items)) {
-            console.log('RSS feed items are empty or malformed. Skipping post.');
-            return;
-        }
+        newItems = newItems.reverse();
 
-        const latestGuidInCurrentFeed = feed.items.length > 0
-            ? (feed.items[0].guid || feed.items[0].id || feed.items[0].link || `NO_GUID_${feed.items[0].title}_${Date.now()}`)
-            : null;
+        for (const [guildId, channelId] of Object.entries(config)) {
+            const channel = await client.channels.fetch(channelId).catch(() => null);
+            if (!channel?.isTextBased()) continue;
 
+            const isFirstTime = !guildSetup[guildId];
+            const itemsToSend = isFirstTime ? feed.items.slice().reverse() : newItems;
 
-        if (lastProcessedGuid === null && latestGuidInCurrentFeed) {
-            await saveLastProcessedGuid(latestGuidInCurrentFeed);
-            lastProcessedGuid = latestGuidInCurrentFeed;
-            console.log(`First run detected. Initializing lastProcessedGuid to ${lastProcessedGuid}. No posts will be sent immediately.`);
-            return;
-        }
-
-        const oneDayAgo = new Date(Date.now() - (24 * 60 * 60 * 1000));
-        const newItemsSinceLastCheck = [];
-
-        // Iterate from newest to oldest in the fetched feed
-        for (const entry of feed.items) {
-            const itemGuid = entry.guid || entry.id || entry.link || `NO_GUID_${entry.title}_${Date.now()}`;
-            const itemDate = entry.isoDate ? new Date(entry.isoDate) : null;
-
-            console.log(`Processing item: '${entry.title}' (GUID: ${itemGuid}, Date: ${itemDate ? itemDate.toISOString() : 'N/A'})`);
-            if (itemGuid === lastProcessedGuid) {
-                console.log(`Reached last processed GUID (${lastProcessedGuid}). Stopping processing older items.`);
-                break;
+            if (isFirstTime) {
+                console.log(`📌 First time in guild ${guildId}, sending all items`);
+                guildSetup[guildId] = true;
+                await saveGuildSetup();
             }
 
-            // Skip items older than 1 day
-            if (itemDate && itemDate < oneDayAgo) {
-                console.log(`Skipping old item: '${entry.title}' (older than 1 day).`);
-                continue; 
-            }
-
-            newItemsSinceLastCheck.push(entry);
-        }
-
-        // Sort items to post from oldest to newest before sending to Discord
-        newItemsSinceLastCheck.sort((a, b) => new Date(a.isoDate).getTime() - new Date(b.isoDate).getTime());
-
-        if (newItemsSinceLastCheck.length > 0) {
-            console.log(`Found ${newItemsSinceLastCheck.length} new items to post.`);
-            for (const entry of newItemsSinceLastCheck) {
-                const title = entry.title || "No Title";
-                const link = entry.link || "";
-                const imageUrl = getImageFromEntry(entry);
-                const embedDiscord = new EmbedBuilder()
-                    .setTitle(title)
-                    .setURL(link)
+            for (const entry of itemsToSend) {
+                const embed = new EmbedBuilder()
+                    .setTitle(entry.title || "No Title")
+                    .setURL(entry.link || "")
                     .setColor(0x0099FF);
 
-                if (imageUrl) {
-                    embedDiscord.setImage(imageUrl);
-                }
-                
-                if (entry.isoDate) {
-                    embedDiscord.setTimestamp(new Date(entry.isoDate));
-                }
+                const img = getImageFromEntry(entry);
+                if (img) embed.setImage(img);
+                if (entry.isoDate) embed.setTimestamp(new Date(entry.isoDate));
 
-                try {
-                    //Send to Discord channel
-                    await channel.send({ embeds: [embedDiscord] });
-                    console.log(`Posted '${title}' to Discord.`);
-                } catch (discordError) {
-                    console.error(`Failed to send message to Discord for '${title}':`, discordError);
-                }
-                
-                //Delay, avoid limited rate issues with Discord API
-                await new Promise(resolve => setTimeout(resolve, 3000));
+                await channel.send({ embeds: [embed] }).catch(console.error);
+                await new Promise(res => setTimeout(res, 3000));
             }
-            if (latestGuidInCurrentFeed) {
-                //Record the latest GUID processed
-                await saveLastProcessedGuid(latestGuidInCurrentFeed);
-                lastProcessedGuid = latestGuidInCurrentFeed;
-            }
-        } else {
-            console.log("No new RSS items found.");
         }
 
-    } catch (error) {
-        console.error(`An unexpected error occurred during RSS check:`, error);
-        if (error.response) {
-            console.error('RSS Parser Response Error:', error.response.status, error.response.headers, error.response.data);
+        const latestGuid = feed.items[0].guid || feed.items[0].id || feed.items[0].link;
+        if (latestGuid) {
+            await saveLastProcessedGuid(latestGuid);
+            lastProcessedGuid = latestGuid;
         }
+
+    } catch (err) {
+        console.error("⚠️ RSS Check Error:", err);
     }
 }
 
-// Initialize the Discord client and set up event listeners
+client.on(Events.MessageCreate, async message => {
+  if (!message.guild || !message.member.permissions.has("Administrator")) return;
+  if (message.content === '!rss-setup') {
+    try {
+      const allChannels = await message.guild.channels.fetch();
+      const textChannels = [...allChannels.values()].filter(c => c.isTextBased() && (c.type === 0 || c.type === 5));
+
+      if (textChannels.length === 0) {
+        await message.reply("ไม่พบห้อง text ที่ใช้งานได้ในกิลด์นี้");
+        return;
+      }
+
+      const chunks = [];
+      for (let i = 0; i < textChannels.length; i += 25) {
+        chunks.push(textChannels.slice(i, i + 25));
+      }
+
+      const rows = chunks.map((chunk, idx) => {
+        const menu = new StringSelectMenuBuilder()
+          .setCustomId(`select_channel_${idx}`)
+          .setPlaceholder(`เลือกห้องที่จะให้โพสต์ RSS (ชุดที่ ${idx + 1})`)
+          .addOptions(chunk.map(c => ({
+            label: `#${c.name}`,
+            value: c.id,
+          })));
+        return new ActionRowBuilder().addComponents(menu);
+      });
+
+      await message.reply({ content: 'เลือกห้องจากด้านล่าง: *ถ้าหากห้องเยอะจะแบ่งออกเป็นหลายส่วนเนื่องจากข้อจำกัดของ discord', components: rows });
+
+    } catch (err) {
+      console.error("เกิดข้อผิดพลาดขณะโหลดช่อง:", err);
+      await message.reply("เกิดข้อผิดพลาดในการโหลดห้อง ลองใหม่อีกครั้งนะ");
+    }
+  }
+});
+
+client.on(Events.InteractionCreate, async interaction => {
+  if (!interaction.isStringSelectMenu()) return;
+  if (!interaction.customId.startsWith('select_channel_')) return;
+
+  const selectedChannelId = interaction.values[0];
+  config[interaction.guildId] = selectedChannelId;
+  await saveConfig();
+
+  delete guildSetup[interaction.guildId];
+  await saveGuildSetup();
+
+  await interaction.reply({ content: `✅ จะโพสต์ RSS ไปที่ <#${selectedChannelId}>`, ephemeral: true });
+
+  await checkRssFeed();
+});
+
 client.on('ready', async () => {
-    console.log(`Logged in as ${client.user.tag}!`);
-
+    console.log(`✅ Logged in as ${client.user.tag}`);
+    await loadConfig();
+    await loadGuildSetup();
     await loadLastProcessedGuid();
-    if (client.rssCheckInterval) {
-        clearInterval(client.rssCheckInterval);
-    }
-    client.rssCheckInterval = setInterval(checkRssFeed, RSS_CHECK_INTERVAL_MS);
-    console.log(`Started RSS feed check loop every ${RSS_CHECK_INTERVAL_MS / 1000} seconds.`);
-    checkRssFeed();
+
+    setInterval(checkRssFeed, RSS_CHECK_INTERVAL_MS);
+    await checkRssFeed();
 });
 
-client.on('error', error => {
-    console.error('Discord client encountered an error:', error);
-});
-
-process.on('unhandledRejection', error => {
-    console.error('Unhandled promise rejection:', error);
-});
-
-if (DISCORD_BOT_TOKEN) {
-    client.login(DISCORD_BOT_TOKEN);
-} else {
-    console.error("Error: DISCORD_BOT_TOKEN environment variable not set. Please set it before running the bot.");
-}
+client.login(DISCORD_BOT_TOKEN);
